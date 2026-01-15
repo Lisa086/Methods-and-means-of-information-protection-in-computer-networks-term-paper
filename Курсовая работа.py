@@ -5,9 +5,9 @@ import subprocess
 import socket
 import time
 from datetime import datetime
-from PyQt5 import QtWidgets, QtCore, QtGui
-from PyQt5.QtWidgets import QMessageBox, QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QScrollArea
-from PyQt5.QtGui import QFont, QIcon, QPixmap, QColor
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
+                             QPushButton, QLabel, QGridLayout, QMessageBox)
+from PyQt5.QtGui import QFont
 from PyQt5.QtCore import Qt
 
 class SecurityChecker:
@@ -21,114 +21,154 @@ class SecurityChecker:
         }
 
     def check_internet_connection(self):
+        """Проверяем интернет через пинг нескольких хостов"""
         test_hosts = ['8.8.8.8', '1.1.1.1', 'ya.ru']
+        
         for host in test_hosts:
             try:
-                param = '-n' if platform.system().lower() == 'windows' else '-c'
-                command = ['ping', param, '1', host]
-                result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+                if platform.system().lower() == 'windows':
+                    param = '-n'
+                else:
+                    param = '-c'
+                    
+                cmd = ['ping', param, '1', host]
+                result = subprocess.run(cmd, stdout=subprocess.PIPE, 
+                                      stderr=subprocess.PIPE, timeout=5)
+                
                 if result.returncode == 0:
                     self.results['internet'] = True
-                    return True, f"✓ Соединение с Интернетом установлено (через {host})"
-            except Exception:
+                    return True, f"Соединение есть (пинг {host} прошел)"
+                    
+            except:
                 continue
+        
         self.results['internet'] = False
-        return False, "✗ Соединение с Интернетом отсутствует"
+        return False, "Интернет недоступен"
 
     def check_antivirus_installed(self):
-        antivirus_paths = {
-            'Windows Defender': 'C:\\Program Files\\Windows Defender\\MsMpEng.exe',
-            'Kaspersky': 'C:\\Program Files (x86)\\Kaspersky Lab',
-            'Dr.Web': 'C:\\Program Files\\DrWeb',
-            'ESET NOD32': 'C:\\Program Files\\ESET',
-            'Avast': 'C:\\Program Files\\Avast Software'
+        """Ищем популярные антивирусы по путям"""
+        paths = {
+            'Windows Defender': r'C:\Program Files\Windows Defender\MsMpEng.exe',
+            'Kaspersky': r'C:\Program Files (x86)\Kaspersky Lab',
+            'Dr.Web': r'C:\Program Files\DrWeb',
+            'ESET NOD32': r'C:\Program Files\ESET',
+            'Avast': r'C:\Program Files\Avast Software'
         }
-        found_antivirus = []
+        
+        found = []
         if platform.system().lower() == 'windows':
-            for av_name, av_path in antivirus_paths.items():
-                if os.path.exists(av_path):
-                    found_antivirus.append(av_name)
-        if found_antivirus:
-            self.results['antivirus_installed'] = found_antivirus
-            return True, f"✓ Обнаружено: {', '.join(found_antivirus)}"
+            for name, path in paths.items():
+                if os.path.exists(path):
+                    found.append(name)
+        
+        if found:
+            self.results['antivirus_installed'] = found
+            return True, f"Найдено: {', '.join(found)}"
         else:
             self.results['antivirus_installed'] = []
-            return False, "✗ Антивирусное ПО не обнаружено"
+            return False, "Антивирус не найден"
 
     def check_firewall_installed(self):
-        found_firewall = []
+        """Проверяем наличие файрвола"""
+        found = []
+        
         if platform.system().lower() == 'windows':
+            # Проверяем встроенный файрвол
             try:
-                result = subprocess.run(['netsh', 'advfirewall', 'show', 'allprofiles', 'state'], capture_output=True, text=True)
+                result = subprocess.run(['netsh', 'advfirewall', 'show', 
+                                       'allprofiles', 'state'], 
+                                      capture_output=True, text=True)
                 if 'ON' in result.stdout.upper() or 'ВКЛ' in result.stdout.upper():
-                    found_firewall.append('Windows Firewall')
-            except Exception:
+                    found.append('Windows Firewall')
+            except:
                 pass
-            firewall_paths = {
-                'Kaspersky Internet Security': 'C:\\Program Files (x86)\\Kaspersky Lab',
-                'Comodo Firewall': 'C:\\Program Files\\COMODO'
+            
+            # Проверяем сторонние
+            fw_paths = {
+                'Kaspersky IS': r'C:\Program Files (x86)\Kaspersky Lab',
+                'Comodo': r'C:\Program Files\COMODO'
             }
-            for fw_name, fw_path in firewall_paths.items():
-                if os.path.exists(fw_path):
-                    found_firewall.append(fw_name)
-        if found_firewall:
-            self.results['firewall_installed'] = found_firewall
-            return True, f"✓ Обнаружено: {', '.join(found_firewall)}"
+            
+            for name, path in fw_paths.items():
+                if os.path.exists(path):
+                    found.append(name)
+        
+        if found:
+            self.results['firewall_installed'] = found
+            return True, f"Файрволы: {', '.join(found)}"
         else:
             self.results['firewall_installed'] = []
-            return False, "✗ МЭ не обнаружен"
+            return False, "Файрвол не обнаружен"
 
     def check_antivirus_working(self):
-        eicar_string = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+        """Тестируем антивирус EICAR файлом"""
+        eicar = "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
         test_file = "eicar_test.txt"
+        
         try:
             with open(test_file, 'w') as f:
-                f.write(eicar_string)
+                f.write(eicar)
             time.sleep(2)
+            
             if os.path.exists(test_file):
                 os.remove(test_file)
                 self.results['antivirus_working'] = False
-                return False, "✗ Антивирус не среагировал на тестовый файл EICAR"
+                return False, "Антивирус пропустил EICAR тест"
             else:
                 self.results['antivirus_working'] = True
-                return True, "✓ Тестовый файл EICAR заблокирован или удален, антивирус работает корректно"
+                return True, "EICAR заблокирован - антивирус работает"
+                
         except Exception:
             self.results['antivirus_working'] = True
-            return True, "✓ Антивирус заблокировал создание файла: защита работает"
+            return True, "Антивирус сработал при записи файла"
 
     def check_firewall_working(self):
-        test_ports = [135, 139, 445, 1433, 3389]
-        blocked_ports = []
-        for port in test_ports:
+        """Проверяем блокировку портов локально"""
+        ports = [135, 139, 445, 1433, 3389]
+        blocked = []
+        
+        for port in ports:
             try:
                 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 sock.settimeout(1)
-                result = sock.connect_ex(('127.0.0.1', port))
+                res = sock.connect_ex(('127.0.0.1', port))
                 sock.close()
-                if result != 0:
-                    blocked_ports.append(port)
-            except Exception:
-                blocked_ports.append(port)
-        if len(blocked_ports) >= 3:
+                
+                if res != 0:  # порт закрыт/заблокирован
+                    blocked.append(port)
+            except:
+                blocked.append(port)
+        
+        total = len(ports)
+        blocked_count = len(blocked)
+        
+        if blocked_count >= 3:
             self.results['firewall_working'] = True
-            return True, f"✓ Заблокировано портов: {len(blocked_ports)}/{len(test_ports)} - МЭ работает корректно"
+            return True, f"Заблокировано {blocked_count}/{total} портов - файрвол ок"
         else:
             self.results['firewall_working'] = False
-            return False, f"✗ Заблокировано портов: {len(blocked_ports)}/{len(test_ports)} - МЭ работает некорректно/отключен"
+            return False, f"Заблокировано только {blocked_count}/{total} - проблема с файрволом"
 
     def get_summary(self):
-        summary = "РЕЗУЛЬТАТЫ ПРОВЕРКИ СИСТЕМЫ БЕЗОПАСНОСТИ\n"
-        summary += "━" * 50 + "\n\n"
-        summary += f"1. Интернет: {'✓ Доступно' if self.results['internet'] else '✗ Отсутствует'}\n\n"
+        """Формируем текстовый отчет"""
+        report = "Результаты проверки безопасности\n"
+        report += "=" * 40 + "\n\n"
+        
+        report += f"Интернет: {'OK' if self.results['internet'] else 'НЕТ'}\n\n"
+        
         avs = self.results['antivirus_installed']
-        summary += f"2. Антивирус: {('✓ ' + ', '.join(avs)) if avs else '✗ Не обнаружено'}\n\n"
+        report += f"Антивирус: {', '.join(avs) if avs else 'НЕ НАЙДЕН'}\n\n"
+        
         fws = self.results['firewall_installed']
-        summary += f"3. Межсетевой экран: {('✓ ' + ', '.join(fws)) if fws else '✗ Не обнаружен'}\n\n"
+        report += f"Файрвол: {', '.join(fws) if fws else 'НЕ НАЙДЕН'}\n\n"
+        
         av_work = self.results['antivirus_working']
         fw_work = self.results['firewall_working']
-        summary += f"4. Работоспособность антивируса: {'✓' if av_work else '✗' if av_work is not None else '?'}\n\n"
-        summary += f"5. Работоспособность МЭ: {'✓' if fw_work else '✗' if fw_work is not None else '?'}\n"
-        return summary
+        
+        report += f"Тест АВ: {'OK' if av_work else 'ПЛОХО' if av_work is not None else '?'}\n\n"
+        report += f"Тест файрвола: {'OK' if fw_work else 'ПЛОХО' if fw_work is not None else '?'}\n"
+        
+        return report
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -137,292 +177,181 @@ class MainWindow(QWidget):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle('Курсовая работа Елина ВВ')
+        self.setWindowTitle('Проверка безопасности ПК')
         self.setGeometry(100, 100, 800, 700)
         
-        # Цвета
-        self.color_dark_gray = '#2C3E50'
-        self.color_light_gray = '#ECF0F1'
-        self.color_mint = '#1ABC9C'
-        self.color_light_mint = '#16A085'
-        self.color_white = '#FFFFFF'
-        self.color_text = '#2C3E50'
+        # Цвета (простые)
+        self.bg_color = '#f5f5f5'
+        self.btn_color = '#27ae60'
+        self.text_color = '#2c3e50'
+        self.white = '#ffffff'
         
-        # Главный layout
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
         
-        # Верхний баннер
-        banner = QWidget()
-        banner.setStyleSheet(f"background-color: {self.color_mint};")
-        banner_layout = QVBoxLayout()
-        banner_layout.setContentsMargins(20, 25, 20, 25)
+        # Заголовок
+        title = QLabel('Проверка безопасности компьютера')
+        title.setFont(QFont('Arial', 20, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
         
-        title = QLabel('Проверка безопасности ПК')
-        title_font = QFont('Arial', 24)
-        title_font.setBold(True)
-        title.setFont(title_font)
-        title.setStyleSheet(f"color: {self.color_white};")
-        banner_layout.addWidget(title)
+        # Кнопки в сетке
+        grid = QGridLayout()
+        grid.setSpacing(15)
         
-        subtitle = QLabel('Комплексное тестирование систем защиты')
-        subtitle_font = QFont('Arial', 11)
-        subtitle.setFont(subtitle_font)
-        subtitle.setStyleSheet(f"color: {self.color_white}; opacity: 0.9;")
-        banner_layout.addWidget(subtitle)
-        
-        banner.setLayout(banner_layout)
-        main_layout.addWidget(banner)
-        
-        # Центральная область
-        central_widget = QWidget()
-        central_widget.setStyleSheet(f"background-color: {self.color_light_gray};")
-        central_layout = QVBoxLayout()
-        central_layout.setContentsMargins(30, 30, 30, 30)
-        central_layout.setSpacing(15)
-        
-        # Сетка кнопок
-        buttons_layout = QtWidgets.QGridLayout()
-        buttons_layout.setSpacing(15)
-        
-        buttons_info = [
-            ('Интернет', self.check_internet, 0, 0),
-            ('Антивирус', self.check_av, 0, 1),
-            ('Межсетевой экран', self.check_fw, 1, 0),
-            ('Работа АВ', self.check_av_work, 1, 1),
-            ('Работа МЭ', self.check_fw_work, 2, 0),
+        buttons = [
+            ('Интернет', self.check_internet),
+            ('Антивирус', self.check_av),
+            ('Файрвол', self.check_fw),
+            ('Тест АВ', self.check_av_work),
+            ('Тест файрвола', self.check_fw_work)
         ]
         
-        for text, func, row, col in buttons_info:
+        for i, (text, func) in enumerate(buttons):
             btn = QPushButton(text)
-            btn_font = QFont('Arial', 10)
-            btn.setFont(btn_font)
-            btn.setCursor(QtGui.QCursor(Qt.PointingHandCursor))
             btn.clicked.connect(func)
-            btn.setMinimumHeight(80)
-            self.style_button(btn, is_primary=False)
-            buttons_layout.addWidget(btn, row, col)
+            btn.setFont(QFont('Arial', 11, QFont.Bold))
+            btn.setMinimumHeight(60)
+            self.style_btn(btn)
+            grid.addWidget(btn, i // 2, i % 2)
         
-        # Полная проверка (во весь ряд)
-        btn_full = QPushButton('⚡ ПОЛНАЯ ПРОВЕРКА')
-        btn_full_font = QFont('Arial', 11)
-        btn_full_font.setBold(True)
-        btn_full.setFont(btn_full_font)
-        btn_full.setCursor(QtGui.QCursor(Qt.PointingHandCursor))
-        btn_full.clicked.connect(self.full_check)
-        btn_full.setMinimumHeight(60)
-        self.style_button(btn_full, is_primary=True)
-        buttons_layout.addWidget(btn_full, 2, 1)
+        # Полная проверка
+        full_btn = QPushButton('Полная проверка')
+        full_btn.clicked.connect(self.full_check)
+        full_btn.setFont(QFont('Arial', 12, QFont.Bold))
+        full_btn.setMinimumHeight(60)
+        full_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.btn_color};
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-weight: bold;
+                padding: 15px;
+            }}
+            QPushButton:hover {{
+                background-color: #219a52;
+            }}
+        """)
+        grid.addWidget(full_btn, 3, 0, 1, 2)
         
-        central_layout.addLayout(buttons_layout)
-        central_layout.addStretch()
+        layout.addLayout(grid)
         
-        # Результаты
-        results_label = QLabel('Результаты последней проверки:')
-        results_label_font = QFont('Arial', 12)
-        results_label_font.setBold(True)
-        results_label.setFont(results_label_font)
-        results_label.setStyleSheet(f"color: {self.color_text};")
-        central_layout.addWidget(results_label)
+        # Область результатов
+        self.results_label = QLabel('Нажмите кнопку для проверки')
+        self.results_label.setFont(QFont('Courier', 11))
+        self.results_label.setStyleSheet(f"""
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 20px;
+            min-height: 120px;
+        """)
+        self.results_label.setWordWrap(True)
+        self.results_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        layout.addWidget(self.results_label)
         
-        self.results_display = QLabel('Выполните проверку для получения результатов')
-        self.results_display.setFont(QFont('Courier', 10))
-        self.results_display.setStyleSheet(f"background-color: {self.color_white}; color: {self.color_text}; padding: 15px; border-radius: 5px; border: 1px solid #BDC3C7;")
-        self.results_display.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-        self.results_display.setWordWrap(True)
-        self.results_display.setMinimumHeight(150)
-        central_layout.addWidget(self.results_display)
+        # Кнопка детального отчета
+        summary_btn = QPushButton('Подробный отчет')
+        summary_btn.clicked.connect(self.show_summary)
+        summary_btn.setMinimumHeight(50)
+        self.style_btn(summary_btn)
+        layout.addWidget(summary_btn)
         
-        # Кнопка показать результаты
-        btn_summary = QPushButton('Показать полные результаты')
-        btn_summary_font = QFont('Arial', 10)
-        btn_summary.setFont(btn_summary_font)
-        btn_summary.setCursor(QtGui.QCursor(Qt.PointingHandCursor))
-        btn_summary.clicked.connect(self.show_summary)
-        btn_summary.setMinimumHeight(45)
-        self.style_button(btn_summary, is_primary=False)
-        central_layout.addWidget(btn_summary)
-        
-        central_widget.setLayout(central_layout)
-        main_layout.addWidget(central_widget, 1)
-        
-        # Нижний подвал
-        footer = QWidget()
-        footer.setStyleSheet(f"background-color: {self.color_dark_gray};")
-        footer_layout = QHBoxLayout()
-        footer_layout.setContentsMargins(20, 15, 20, 15)
-        
-        footer_text = QLabel('Курсовая работа • Методы и средства защиты информации в компьютерных сетях • Елина ВВ • БСТ2204')
-        footer_text_font = QFont('Arial', 9)
-        footer_text.setFont(footer_text_font)
-        footer_text.setStyleSheet(f"color: {self.color_light_gray};")
-        footer_layout.addWidget(footer_text)
-        footer_layout.addStretch()
-        
-        footer.setLayout(footer_layout)
-        main_layout.addWidget(footer)
-        
-        self.setLayout(main_layout)
+        self.setLayout(layout)
 
-    def style_button(self, button, is_primary=False):
-        if is_primary:
-            button.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {self.color_mint};
-                    color: {self.color_white};
-                    border: none;
-                    border-radius: 8px;
-                    padding: 10px;
-                    font-weight: bold;
-                    font-size: 11px;
-                }}
-                QPushButton:hover {{
-                    background-color: {self.color_light_mint};
-                }}
-                QPushButton:pressed {{
-                    background-color: #0E8B6F;
-                }}
-            """)
-        else:
-            button.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {self.color_white};
-                    color: {self.color_text};
-                    border: 2px solid {self.color_mint};
-                    border-radius: 8px;
-                    padding: 10px;
-                    font-weight: bold;
-                }}
-                QPushButton:hover {{
-                    background-color: {self.color_light_mint};
-                    color: {self.color_white};
-                    border: 2px solid {self.color_light_mint};
-                }}
-                QPushButton:pressed {{
-                    background-color: #0E8B6F;
-                    color: {self.color_white};
-                }}
-            """)
+    def style_btn(self, btn):
+        """Стиль для обычных кнопок"""
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: white;
+                color: {self.text_color};
+                border: 2px solid {self.btn_color};
+                border-radius: 8px;
+                padding: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {self.btn_color};
+                color: white;
+            }}
+        """)
 
-    def show_result(self, title, message, is_success=True):
+    def show_result(self, title, message, success=True):
+        """Показываем popup с результатом"""
         msg = QMessageBox(self)
         msg.setWindowTitle(title)
         msg.setText(message)
-        msg_font = QFont('Arial', 10)
-        msg.setFont(msg_font)
         
-        if is_success:
-            msg.setStyleSheet(f"""
-                QMessageBox {{
-                    background-color: {self.color_white};
-                }}
-                QMessageBox QLabel {{
-                    color: {self.color_text};
-                }}
-                QPushButton {{
-                    background-color: {self.color_mint};
-                    color: {self.color_white};
-                    border: none;
-                    border-radius: 5px;
-                    padding: 5px 20px;
-                    min-width: 60px;
-                }}
-                QPushButton:hover {{
-                    background-color: {self.color_light_mint};
-                }}
-            """)
-        else:
-            msg.setStyleSheet(f"""
-                QMessageBox {{
-                    background-color: {self.color_white};
-                }}
-                QMessageBox QLabel {{
-                    color: #E74C3C;
-                }}
-                QPushButton {{
-                    background-color: #E74C3C;
-                    color: {self.color_white};
-                    border: none;
-                    border-radius: 5px;
-                    padding: 5px 20px;
-                    min-width: 60px;
-                }}
-                QPushButton:hover {{
-                    background-color: #C0392B;
-                }}
-            """)
-        
+        color = '#27ae60' if success else '#e74c3c'
+        msg.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {color};
+                color: white;
+                border: none;
+                border-radius: 5px;
+                padding: 8px 20px;
+                min-width: 80px;
+            }}
+            QPushButton:hover {{
+                background-color: {color};
+            }}
+            QLabel {{
+                color: {self.text_color};
+            }}
+        """)
         msg.exec_()
 
-    def update_results_display(self, message):
-        self.results_display.setText(message)
+    def update_results(self, msg):
+        self.results_label.setText(msg)
 
     def check_internet(self):
         ok, msg = self.checker.check_internet_connection()
-        self.show_result('Проверка Интернета', msg, ok)
-        self.update_results_display(msg)
+        self.show_result('Интернет', msg, ok)
+        self.update_results(msg)
 
     def check_av(self):
         ok, msg = self.checker.check_antivirus_installed()
-        self.show_result('Проверка антивируса', msg, ok)
-        self.update_results_display(msg)
+        self.show_result('Антивирус', msg, ok)
+        self.update_results(msg)
 
     def check_fw(self):
         ok, msg = self.checker.check_firewall_installed()
-        self.show_result('Проверка межсетевого экрана', msg, ok)
-        self.update_results_display(msg)
+        self.show_result('Файрвол', msg, ok)
+        self.update_results(msg)
 
     def check_av_work(self):
         ok, msg = self.checker.check_antivirus_working()
-        self.show_result('Проверка работоспособности антивируса', msg, ok)
-        self.update_results_display(msg)
+        self.show_result('Тест антивируса', msg, ok)
+        self.update_results(msg)
 
     def check_fw_work(self):
         ok, msg = self.checker.check_firewall_working()
-        self.show_result('Проверка работоспособности МЭ', msg, ok)
-        self.update_results_display(msg)
+        self.show_result('Тест файрвола', msg, ok)
+        self.update_results(msg)
 
     def full_check(self):
+        """Запускаем все тесты"""
         self.checker.check_internet_connection()
         self.checker.check_antivirus_installed()
         self.checker.check_firewall_installed()
         self.checker.check_antivirus_working()
         self.checker.check_firewall_working()
+        
         summary = self.checker.get_summary()
-        self.update_results_display(summary)
-        self.show_result('Полная проверка', 'Комплексная проверка завершена!\n\nСм. результаты ниже.', True)
+        self.update_results(summary)
+        self.show_result('Готово', 'Все проверки завершены', True)
 
     def show_summary(self):
         summary = self.checker.get_summary()
         msg = QMessageBox(self)
-        msg.setWindowTitle('Полные результаты проверки')
+        msg.setWindowTitle('Отчет')
         msg.setText(summary)
-        msg_font = QFont('Courier', 10)
-        msg.setFont(msg_font)
-        msg.setStyleSheet(f"""
-            QMessageBox {{
-                background-color: {self.color_white};
-            }}
-            QMessageBox QLabel {{
-                color: {self.color_text};
-            }}
-            QPushButton {{
-                background-color: {self.color_mint};
-                color: {self.color_white};
-                border: none;
-                border-radius: 5px;
-                padding: 5px 20px;
-                min-width: 60px;
-            }}
-            QPushButton:hover {{
-                background-color: {self.color_light_mint};
-            }}
-        """)
         msg.exec_()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
+    win = MainWindow()
+    win.show()
     sys.exit(app.exec_())
